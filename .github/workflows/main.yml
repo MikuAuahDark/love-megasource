@@ -1,0 +1,36 @@
+name: continuous-integration
+on: [push, pull_request]
+
+jobs:
+  windows-os:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        platform: [Win32, x64]
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v2.1.1
+      with:
+        path: megasource
+    - name: Clone LÖVE
+      uses: actions/checkout@v2.1.1
+      with:
+        path: megasource/libs/love
+        repository: love2d/love
+        ref: master
+    - name: Configure
+      shell: cmd
+      env:
+        PLATFORM: ${{ matrix.platform }}
+      run: cmake -Bbuild -Hmegasource -A %PLATFORM% -DCMAKE_INSTALL_PREFIX=%CD%\install
+    - name: Build
+      shell: cmd
+      run: cmake --build build --config Release --target install
+    - name: Megatest
+      shell: cmd
+      run: |
+        echo | build\Release\megatest
+        exit /b 0
+    - name: LÖVE Version
+      shell: cmd
+      run: install\lovec --version
