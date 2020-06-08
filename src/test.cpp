@@ -18,6 +18,8 @@
 
 extern "C" {
 #	include "lua.h"
+#	include "lualib.h"
+#	include "lauxlib.h"
 }
 
 typedef std::stringstream strs;
@@ -42,12 +44,22 @@ int main(int argc, char **argv)
 
 	vfunc lua = [](strs &c, strs &l)
 	{
+		lua_State *L = luaL_newstate();
 		std::string compiled = LUA_RELEASE;
-
 		compiled = compiled.substr(4);
 
 		c << compiled;
-		l << "N/A";
+
+		if (L)
+		{
+			luaL_openlibs(L);
+			luaL_dostring(L, "return _VERSION:sub(5)");
+			l << lua_tostring(L, -1);
+			lua_close(L);
+		}
+		else
+			l << "N/A";
+
 		return "Lua";
 	};
 
@@ -61,7 +73,7 @@ int main(int argc, char **argv)
 	vfunc vorbis = [](strs &c, strs &l)
 	{
 		c << "N/A";
-		l << "N/A";
+		l << vorbis_version_string() + 19; // Xiph.Org libVorbis x.y.z
 		return "vorbis";
 	};
 
@@ -108,8 +120,25 @@ int main(int argc, char **argv)
 	{
 		alIsEnabled(AL_SOURCE_DISTANCE_MODEL);
 
+		ALCdevice *device = alcOpenDevice(nullptr);
+		const char *linkedVersion = "N/A";
+
 		c << "N/A";
-		l << "N/A";
+
+		if (device)
+		{
+			ALCcontext *context = alcCreateContext(device, nullptr);
+			if (alcMakeContextCurrent(context))
+			{
+				linkedVersion = alGetString(AL_VERSION);
+				alcMakeContextCurrent(nullptr);
+				alcDestroyContext(context);
+			}
+
+			alcCloseDevice(device);
+		}
+
+		l << linkedVersion;
 		return "OpenAL";
 	};
 
