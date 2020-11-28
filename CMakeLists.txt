@@ -1,9 +1,9 @@
+cmake_minimum_required(VERSION 3.1)
+
 if(${CMAKE_SOURCE_DIR} STREQUAL ${CMAKE_BINARY_DIR})
 	# Protop: run cmake like this: cmake -G "<generator>" -H. -Bbuild
 	message(FATAL_ERROR "Prevented in-tree build.")
 endif()
-
-cmake_minimum_required(VERSION 3.1)
 
 include(ExternalProject)
 
@@ -11,11 +11,19 @@ project(megasource)
 
 set(MEGA TRUE)
 
-set (CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD 11)
+
+# option() honors normal variables.
+set(CMAKE_POLICY_DEFAULT_CMP0077 NEW)
 
 if(CMAKE_SIZEOF_VOID_P EQUAL 8)
-	set(MEGA_X64 TRUE)
-	set(MEGA_ARCH x64)
+	if(MSVC AND "${CMAKE_GENERATOR}" MATCHES "^Visual Studio" AND "${CMAKE_GENERATOR_PLATFORM}" STREQUAL "ARM64")
+		set(MEGA_ARM64 TRUE)
+		set(MEGA_ARCH arm64)
+	else()
+		set(MEGA_X64 TRUE)
+		set(MEGA_ARCH x64)
+	endif()
 else()
 	set(MEGA_X86 TRUE)
 	set(MEGA_ARCH x86)
@@ -23,9 +31,6 @@ endif()
 
 if(MSVC)
 	set(CMAKE_SUPPRESS_REGENERATION TRUE)
-endif()
-
-if(MSVC)
 	set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /MP")
 	set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} /MP")
 	if(MEGA_X86)
@@ -114,6 +119,8 @@ if(MSVC)
 
 			if(MEGA_X86)
 				set(MEGA_MSVC_VCVARSALL_BAT_ARG "x86")
+			elseif(MEGA_ARM64)
+				set(MEGA_MSVC_VCVARSALL_BAT_ARG "x86_arm64")
 			else()
 				set(MEGA_MSVC_VCVARSALL_BAT_ARG "x86_amd64")
 			endif()
@@ -145,7 +152,10 @@ if(MSVC)
 	endif()
 
 	# InstallRequiredSystemLibraries (as of CMake 3.14.5) doesn't include msvcp140_1.dll or msvcp140_2.dll in its list.
-	if(EXISTS ${MSVC_RUNTIME_MSVCP_PATH})
+	# InstallRequiredSystemLibraries (as of CMake 3.19.1) doesn't take MSVC ARM64 into account
+	if(MEGA_ARM64)
+		message(WARNING "InstallRequiredSystemLibraries does not support MSVC ARM64 yet")
+	elseif(EXISTS ${MSVC_RUNTIME_MSVCP_PATH})
 		get_filename_component(MSVC_RUNTIME_MSVCP_DIR ${MSVC_RUNTIME_MSVCP_PATH} DIRECTORY)
 		message(STATUS "Found MSVC Redist directory: ${MSVC_RUNTIME_MSVCP_DIR}")
 
@@ -158,37 +168,38 @@ if(MSVC)
 		message(WARNING "InstallRequiredSystemLibraries did not find any msvcp runtime dll")
 	endif()
 
-	list(LENGTH CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS MSVC_RUNTIME_COUNT)
-	message(STATUS "Found ${MSVC_RUNTIME_COUNT} Visual C/C++ Runtime files")
+	if(NOT MEGA_ARM64)
+		list(LENGTH CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS MSVC_RUNTIME_COUNT)
+		message(STATUS "Found ${MSVC_RUNTIME_COUNT} Visual C/C++ Runtime files")
 
-	set(MEGA_MSVC_DLLS ${CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS})
+		set(MEGA_MSVC_DLLS ${CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS})
+	else()
+		set(MEGA_MSVC_DLLS "")
+	endif()
 endif()
 
 
 set(MEGA_ZLIB_VER "1.2.11")
 set(MEGA_LUA51_VER "5.1.5")
 set(MEGA_LUAJIT_VER "2.1.0-1d8b747")
-set(MEGA_LIBOGG_VER "1.3.2")
-set(MEGA_LIBVORBIS_VER "1.3.5")
+set(MEGA_LIBOGG_VER "1.3.4")
+set(MEGA_LIBVORBIS_VER "1.3.7")
 set(MEGA_LIBTHEORA_VER "1.1.1")
 set(MEGA_FREETYPE_VER "2.8.1")
-set(MEGA_SDL2_VER "2.0.10")
-set(MEGA_OPENAL_VER "1.19.1")
+set(MEGA_SDL2_VER "2.0.12")
+set(MEGA_OPENAL_VER "1.21.0-d86046d")
 set(MEGA_MODPLUG_VER "0.8.8.4")
 
 set(SKIP_INSTALL_ALL TRUE)
-
-set(ZLIB_FOUND TRUE)
-set(ZLIB_LIBRARY zlibstatic)
-set(ZLIB_INCLUDE_DIR .)
-
-set(OGG_LIBRARY ogg-static)
 
 message(STATUS "-----------------------------------------------------")
 message(STATUS "Configuring: zlib ${MEGA_ZLIB_VER}")
 message(STATUS "-----------------------------------------------------")
 add_subdirectory("libs/zlib-${MEGA_ZLIB_VER}" ${CMAKE_BINARY_DIR}/zlib)
 set(MEGA_ZLIB zlibstatic)
+set(ZLIB_FOUND TRUE)
+set(ZLIB_LIBRARY zlibstatic)
+set(ZLIB_INCLUDE_DIR .)
 
 message(STATUS "-----------------------------------------------------")
 message(STATUS "Configuring: lua ${MEGA_LUA51_VER}")
@@ -199,13 +210,17 @@ set(MEGA_LUA51 lua51)
 message(STATUS "-----------------------------------------------------")
 message(STATUS "Configuring: libogg ${MEGA_LIBOGG_VER}")
 message(STATUS "-----------------------------------------------------")
-add_subdirectory("libs/libogg-${MEGA_LIBOGG_VER}" ${CMAKE_BINARY_DIR}/libogg)
+set(INSTALL_DOCS OFF)
+set(INSTALL_PKG_CONFIG_MODULE OFF)
+set(INSTALL_CMAKE_PACKAGE_MODULE OFF)
+add_subdirectory("libs/libogg" ${CMAKE_BINARY_DIR}/libogg)
 set(MEGA_LIBOGG ogg-static)
+set(OGG_LIBRARY ogg-static)
 
 message(STATUS "-----------------------------------------------------")
 message(STATUS "Configuring: libvorbis ${MEGA_LIBVORBIS_VER}")
 message(STATUS "-----------------------------------------------------")
-add_subdirectory("libs/libvorbis-${MEGA_LIBVORBIS_VER}" ${CMAKE_BINARY_DIR}/libvorbis)
+add_subdirectory("libs/libvorbis" ${CMAKE_BINARY_DIR}/libvorbis)
 set(MEGA_LIBVORBIS vorbis-static)
 set(MEGA_LIBVORBISFILE vorbisfile-static)
 
@@ -224,6 +239,10 @@ set(MEGA_FREETYPE freetype)
 message(STATUS "-----------------------------------------------------")
 message(STATUS "Configuring: SDL2 ${MEGA_SDL2_VER}")
 message(STATUS "-----------------------------------------------------")
+if(MEGA_ARM64)
+	# Don't build OpenGL backend for Windows 10 ARM64 as it lacks them
+	set(VIDEO_OPENGL OFF)
+endif()
 add_subdirectory("libs/SDL2" ${CMAKE_BINARY_DIR}/SDL2)
 set(MEGA_SDL2 SDL2)
 set(MEGA_SDL2MAIN SDL2main)
@@ -237,6 +256,7 @@ set(ALSOFT_EXAMPLES OFF)
 set(ALSOFT_INSTALL_CONFIG OFF)
 set(ALSOFT_INSTALL_HRTF_DATA OFF)
 set(ALSOFT_INSTALL_AMBDEC_PRESETS OFF)
+set(ALSOFT_INSTALL OFF)
 add_subdirectory("libs/openal-soft" ${CMAKE_BINARY_DIR}/openal-soft)
 set(MEGA_OPENAL ${OPENAL_LIB_NAME})
 
@@ -247,7 +267,8 @@ add_subdirectory("libs/libmodplug-${MEGA_MODPLUG_VER}" ${CMAKE_BINARY_DIR}/libmo
 set(MEGA_MODPLUG modplug-static)
 
 # LuaJIT
-if(MSVC)
+# TODO: Remove "NOT MEGA_ARM64" check once LuaJIT supports Windows 10 ARM (see below)
+if(MSVC AND NOT MEGA_ARM64)
 	message(STATUS "-----------------------------------------------------")
 	message(STATUS "Configuring: LuaJIT ${MEGA_LUAJIT_VER}")
 	message(STATUS "-----------------------------------------------------")
@@ -288,8 +309,8 @@ endif()
 set(MEGA_3P
 	${MEGA_ZLIB}
 	${MEGA_LUA51}
-	${MEGA_LIBOGG}
-	${MEGA_LIBVORBIS}
+#	${MEGA_LIBOGG}
+#	${MEGA_LIBVORBIS}
 	${MEGA_LIBVORBISFILE}
 	${MEGA_LIBTHEORA}
 	${MEGA_FREETYPE}
@@ -308,6 +329,11 @@ if(EXISTS ${MEGA_LOVE}/CMakeLists.txt)
 	message(STATUS "-----------------------------------------------------")
 	message(STATUS "Configuring: love")
 	message(STATUS "-----------------------------------------------------")
+	if(MEGA_ARM64)
+		# LuaJIT is currently incompatible with Windows 10 ARM64
+		# https://github.com/LuaJIT/LuaJIT/issues/593
+		set(LOVE_JIT OFF)
+	endif()
 	add_subdirectory(${MEGA_LOVE} ${CMAKE_BINARY_DIR}/love)
 
 	# Turn off third-party warnings when building with LOVE.
