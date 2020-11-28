@@ -1,6 +1,6 @@
 /*
   Simple DirectMedia Layer
-  Copyright (C) 1997-2019 Sam Lantinga <slouken@libsdl.org>
+  Copyright (C) 1997-2020 Sam Lantinga <slouken@libsdl.org>
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -262,9 +262,6 @@ SDL_ScanFloat(const char *text, double *valuep)
 }
 #endif
 
-#if defined(_MSC_VER) && !defined(HAVE_MEMSET)
-__declspec(noinline)
-#endif
 void *
 SDL_memset(SDL_OUT_BYTECAP(len) void *dst, int c, size_t len)
 {
@@ -424,17 +421,6 @@ SDL_strlen(const char *string)
 #endif /* HAVE_STRLEN */
 }
 
-wchar_t *
-SDL_wcsdup(const wchar_t *string)
-{
-    size_t len = ((SDL_wcslen(string) + 1) * sizeof(wchar_t));
-    wchar_t *newstr = (wchar_t *)SDL_malloc(len);
-    if (newstr) {
-        SDL_memcpy(newstr, string, len);
-    }
-    return newstr;
-}
-
 size_t
 SDL_wcslen(const wchar_t * string)
 {
@@ -480,6 +466,34 @@ SDL_wcslcat(SDL_INOUT_Z_CAP(maxlen) wchar_t *dst, const wchar_t *src, size_t max
 #endif /* HAVE_WCSLCAT */
 }
 
+wchar_t *
+SDL_wcsdup(const wchar_t *string)
+{
+    size_t len = ((SDL_wcslen(string) + 1) * sizeof(wchar_t));
+    wchar_t *newstr = (wchar_t *)SDL_malloc(len);
+    if (newstr) {
+        SDL_memcpy(newstr, string, len);
+    }
+    return newstr;
+}
+
+wchar_t *
+SDL_wcsstr(const wchar_t *haystack, const wchar_t *needle)
+{
+#if defined(HAVE_WCSSTR)
+    return SDL_const_cast(wchar_t*,wcsstr(haystack, needle));
+#else
+    size_t length = SDL_wcslen(needle);
+    while (*haystack) {
+        if (SDL_wcsncmp(haystack, needle, length) == 0) {
+            return (wchar_t *)haystack;
+        }
+        ++haystack;
+    }
+    return NULL;
+#endif /* HAVE_WCSSTR */
+}
+
 int
 SDL_wcscmp(const wchar_t *str1, const wchar_t *str2)
 {
@@ -494,6 +508,22 @@ SDL_wcscmp(const wchar_t *str1, const wchar_t *str2)
     }
     return (int)(*str1 - *str2);
 #endif /* HAVE_WCSCMP */
+}
+
+int
+SDL_wcsncmp(const wchar_t *str1, const wchar_t *str2, size_t maxlen)
+{
+#if defined(HAVE_WCSNCMP)
+    return wcsncmp(str1, str2, maxlen);
+#else
+    while (*str1 && *str2) {
+        if (*str1 != *str2)
+            break;
+        ++str1;
+        ++str2;
+    }
+    return (int)(*str1 - *str2);
+#endif /* HAVE_WCSNCMP */
 }
 
 size_t
@@ -552,7 +582,7 @@ SDL_utf8strlen(const char *str)
     const char *p = str;
     char ch;
 
-    while ((ch = *(p++))) {
+    while ((ch = *(p++)) != 0) {
         /* if top two bits are 1 and 0, it's a continuation byte. */
         if ((ch & 0xc0) != 0x80) {
             retval++;
@@ -821,7 +851,7 @@ int SDL_atoi(const char *string)
 double SDL_atof(const char *string)
 {
 #ifdef HAVE_ATOF
-    return (double) atof(string);
+    return atof(string);
 #else
     return SDL_strtod(string, NULL);
 #endif /* HAVE_ATOF */
@@ -1602,7 +1632,7 @@ SDL_PrintFloat(char *text, size_t maxlen, SDL_FormatInfo *info, double arg)
             text += len;
             left -= len;
         }
-        
+
         if (end != textstart) {
             const size_t filllen = SDL_min(len, ((size_t) (end - textstart)) - 1);
             SDL_memset(textstart, fill, filllen);
